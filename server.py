@@ -1,4 +1,6 @@
 import asyncio
+import json
+import os
 
 # Список расписания
 schedule = [
@@ -15,9 +17,23 @@ schedule = [
     (19, 20, 0, 'green')
 ]
 
-# Хранение данных о клиентах
+backup_file = "schedule_backup.json"
 clients_data = {}
 schedule_lock = asyncio.Lock()
+
+
+def save_backup():
+    """Сохраняет расписание в файл бэкапа."""
+    with open(backup_file, "w") as f:
+        json.dump(schedule, f)
+
+
+def load_backup():
+    """Загружает расписание из файла бэкапа."""
+    global schedule
+    if os.path.exists(backup_file):
+        with open(backup_file, "r") as f:
+            schedule = json.load(f)
 
 
 async def handle_client(reader, writer):
@@ -53,26 +69,31 @@ async def handle_client(reader, writer):
                             clients_data[login].append((s, e))
                             break
 
+                save_backup()  # Сохраняем обновлённое расписание в бэкап
                 writer.write(str(schedule).encode())
                 await writer.drain()
 
     writer.close()
     await writer.wait_closed()
 
-async def update_schedule():
-    while True:
-        await asyncio.sleep(10)  # Очищаем каждые 10 секунд
-        for i, (s, e, counter, color) in enumerate(schedule):
-            if counter > 4:
-                schedule[i] = (s, e, 0, 'green')
 
+async def update_schedule():
+    """Очищает расписание каждые 10 секунд."""
+    while True:
+        await asyncio.sleep(15)
+        async with schedule_lock:
+            for i, (s, e, counter, color) in enumerate(schedule):
+                if counter > 0:
+                    schedule[i] = (s, e, 0, 'green')
+            save_backup()  # Сохраняем обновления в бэкап
 
 
 async def main():
+    load_backup()  # Загружаем расписание из бэкапа при старте
     server = await asyncio.start_server(handle_client, 'localhost', 12345)
-    asyncio.create_task(update_schedule())   
+    asyncio.create_task(update_schedule())
     async with server:
-        print("Сервер запущен на localhost:12345")
+        print("Основной сервер запущен на localhost:12345")
         await server.serve_forever()
 
 

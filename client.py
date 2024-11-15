@@ -9,7 +9,9 @@ class ScheduleClientApp:
         self.root.title("Клиент расписания")
         self.root.geometry("400x400")
 
-        self.server_address = ('localhost', 12345)
+        # Адреса серверов
+        self.primary_server_address = ('localhost', 12345)
+        self.backup_server_address = ('localhost', 12346)
         self.schedule = []
         self.login = None  # Логин клиента
 
@@ -36,8 +38,12 @@ class ScheduleClientApp:
             root, text="Зарезервировать выбранные", command=self.reserve_ranges)
         self.reserve_button.pack(pady=5)
 
+        self.running = True
+
         # Асинхронное обновление расписания
         self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def set_login(self):
         """Сохраняет логин клиента."""
@@ -47,10 +53,10 @@ class ScheduleClientApp:
             self.login_entry["state"] = "disabled"
             print(f"Логин установлен: {self.login}")
 
-    async def send_request(self, message):
+    async def send_request(self, message, server_address):
         """Асинхронно отправляет запрос на сервер и получает ответ."""
         try:
-            reader, writer = await asyncio.open_connection(*self.server_address)
+            reader, writer = await asyncio.open_connection(*server_address)
             writer.write(message.encode())
             await writer.drain()
 
@@ -60,18 +66,25 @@ class ScheduleClientApp:
 
             return data.decode()
         except Exception as e:
-            print(f"Ошибка подключения: {e}")
+            print(f"Ошибка подключения к серверу {server_address}: {e}")
             return None
 
     async def update_schedule(self):
         """Запрашивает расписание у сервера и обновляет интерфейс."""
-        response = await self.send_request("GET_SCHEDULE")
+        response = await self.send_request("GET_SCHEDULE", self.primary_server_address)
+
+        # Если основной сервер недоступен, переключаемся на резервный сервер
+        if not response:
+            print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
+            response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
+
         if response:
             self.schedule = eval(response)  # Преобразуем строку в список
             self.update_schedule_ui()
 
         # Планируем следующее обновление через 10 секунд
-        self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
+        if self.running:  # Проверяем, не закрыто ли окно
+            self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
     def update_schedule_ui(self):
         """Обновляет интерфейс с расписанием."""
@@ -102,19 +115,33 @@ class ScheduleClientApp:
     async def handle_reservation(self, selected_ranges):
         """Обрабатывает резервирование выбранных диапазонов."""
         ranges_message = f"{self.login}:{selected_ranges}"
-        response = await self.send_request(ranges_message)
+        response = await self.send_request(ranges_message, self.primary_server_address)
+
+        # Если основной сервер недоступен, переключаемся на резервный сервер
+        if not response:
+            print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
+            response = await self.send_request(ranges_message, self.backup_server_address)
+
         if response:
             self.schedule = eval(response)  # Преобразуем строку в список
             self.update_schedule_ui()
+
+    def on_closing(self):
+        """Метод для обработки закрытия окна."""
+        self.running = False  # Останавливаем цикл asyncio
+        self.root.quit()  # Закрываем приложение Tkinter
 
 async def main():
     root = tk.Tk()
     app = ScheduleClientApp(root)
 
     # Запускаем tkinter в asyncio-петле
-    while True:
-        app.root.update()
-        await asyncio.sleep(0.01)
+    try:
+        while app.running:
+            app.root.update()
+            await asyncio.sleep(0.01)
+    except tk.TclError:
+        print("Окно закрыто, приложение завершено.")
 
 
 if __name__ == "__main__":
