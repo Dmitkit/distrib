@@ -45,6 +45,8 @@ class ScheduleClientApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
     def set_login(self):
         """Сохраняет логин клиента."""
         self.login = self.login_entry.get().strip()
@@ -83,6 +85,8 @@ class ScheduleClientApp:
             self.update_schedule_ui()
 
         # Планируем следующее обновление через 10 секунд
+        if self.running:  # Проверяем, не закрыто ли окно
+            self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
         if self.running:  # Проверяем, не закрыто ли окно
             self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
@@ -134,7 +138,7 @@ class ScheduleClientApp:
 async def main():
     root = tk.Tk()
     app = ScheduleClientApp(root)
-
+    
     # Запускаем tkinter в asyncio-петле
     try:
         while app.running:
