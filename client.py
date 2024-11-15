@@ -36,8 +36,13 @@ class ScheduleClientApp:
             root, text="Зарезервировать выбранные", command=self.reserve_ranges)
         self.reserve_button.pack(pady=5)
 
+        # Устанавливаем флаг работы приложения
+        self.running = True
+
         # Асинхронное обновление расписания
         self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def set_login(self):
         """Сохраняет логин клиента."""
@@ -71,7 +76,8 @@ class ScheduleClientApp:
             self.update_schedule_ui()
 
         # Планируем следующее обновление через 10 секунд
-        self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
+        if self.running:  # Проверяем, не закрыто ли окно
+            self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
     def update_schedule_ui(self):
         """Обновляет интерфейс с расписанием."""
@@ -107,15 +113,23 @@ class ScheduleClientApp:
             self.schedule = eval(response)  # Преобразуем строку в список
             self.update_schedule_ui()
 
+    def on_closing(self):
+        """Метод для обработки закрытия окна."""
+        print("Окно закрыто, завершение работы приложения.")
+        self.running = False  # Останавливаем цикл asyncio
+        self.root.quit()  # Закрываем приложение Tkinter
+
 async def main():
     root = tk.Tk()
     app = ScheduleClientApp(root)
-
+    
     # Запускаем tkinter в asyncio-петле
-    while True:
-        app.root.update()
-        await asyncio.sleep(0.01)
-
+    try:
+        while app.running:
+            app.root.update()
+            await asyncio.sleep(0.01)
+    except tk.TclError:
+        print("Окно закрыто, приложение завершено.")
 
 if __name__ == "__main__":
     asyncio.run(main())
