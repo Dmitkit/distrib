@@ -13,7 +13,7 @@ class ScheduleClientApp:
         self.primary_server_address = ('localhost', 12345)
         self.backup_server_address = ('localhost', 12346)
         self.schedule = []
-        self.login = None  # Логин клиента
+        self.login = None
 
         # Ввод логина
         login_frame = ttk.Frame(root)
@@ -40,10 +40,7 @@ class ScheduleClientApp:
 
         self.running = True
 
-        # Асинхронное обновление расписания
         self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
-
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -81,18 +78,16 @@ class ScheduleClientApp:
             response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
 
         if response:
-            self.schedule = eval(response)  # Преобразуем строку в список
+            self.schedule = eval(response)
             self.update_schedule_ui()
 
         # Планируем следующее обновление через 10 секунд
-        if self.running:  # Проверяем, не закрыто ли окно
-            self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
-        if self.running:  # Проверяем, не закрыто ли окно
+        if self.running:
             self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
     def update_schedule_ui(self):
         """Обновляет интерфейс с расписанием."""
-        selected_indices = list(self.range_listbox.curselection())  # Сохраняем текущие выбранные индексы
+        selected_indices = list(self.range_listbox.curselection())
 
         self.range_listbox.delete(0, tk.END)
 
@@ -101,7 +96,6 @@ class ScheduleClientApp:
             self.range_listbox.insert(tk.END, display_text)
             self.range_listbox.itemconfig(tk.END, {'bg': color})
 
-        # Восстанавливаем выбор
         for index in selected_indices:
             self.range_listbox.select_set(index)
 
@@ -127,19 +121,18 @@ class ScheduleClientApp:
             response = await self.send_request(ranges_message, self.backup_server_address)
 
         if response:
-            self.schedule = eval(response)  # Преобразуем строку в список
+            self.schedule = eval(response)
             self.update_schedule_ui()
 
     def on_closing(self):
         """Метод для обработки закрытия окна."""
-        self.running = False  # Останавливаем цикл asyncio
-        self.root.quit()  # Закрываем приложение Tkinter
+        self.running = False
+        self.root.quit()
 
 async def main():
     root = tk.Tk()
     app = ScheduleClientApp(root)
     
-    # Запускаем tkinter в asyncio-петле
     try:
         while app.running:
             app.root.update()
