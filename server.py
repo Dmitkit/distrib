@@ -39,7 +39,8 @@ def load_backup():
 async def handle_client(reader, writer):
     """Обрабатывает запрос клиента."""
     while True:
-        data = await reader.read(1024)
+        data = await reader.read(512)
+        # print(f"Received {len(data)} bytes from client")
         if not data:
             break
 
@@ -63,13 +64,14 @@ async def handle_client(reader, writer):
                             if counter > 10:
                                 color = 'red'
                             schedule[i] = (s, e, counter, color)
-                            # Сохраняем данные о клиенте
+
+                            # Сохраняем данные о клиенте.    # Пока никак не используем.
                             if login not in clients_data:
                                 clients_data[login] = []
                             clients_data[login].append((s, e))
                             break
 
-                save_backup()  # Сохраняем обновлённое расписание в бэкап
+                save_backup()
                 writer.write(str(schedule).encode())
                 await writer.drain()
 
@@ -78,22 +80,22 @@ async def handle_client(reader, writer):
 
 
 async def update_schedule():
-    """Очищает расписание каждые 10 секунд."""
+    """Очищает расписание каждые n секунд."""
     while True:
         await asyncio.sleep(15)
         async with schedule_lock:
             for i, (s, e, counter, color) in enumerate(schedule):
                 if counter > 0:
                     schedule[i] = (s, e, 0, 'green')
-            save_backup()  # Сохраняем обновления в бэкап
+            save_backup()
 
 
 async def main():
-    load_backup()  # Загружаем расписание из бэкапа при старте
-    server = await asyncio.start_server(handle_client, 'localhost', 12345)
+    load_backup()
+    server = await asyncio.start_server(handle_client, 'localhost', 20001)
     asyncio.create_task(update_schedule())
     async with server:
-        print("Основной сервер запущен на localhost:12345")
+        print("Основной сервер запущен на localhost:20001")
         await server.serve_forever()
 
 

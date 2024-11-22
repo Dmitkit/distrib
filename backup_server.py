@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import time
 
 # Инициализация расписания
 schedule = []
@@ -10,8 +9,8 @@ clients_data = {}
 schedule_lock = asyncio.Lock()
 
 # Порт основного сервера
-primary_server_port = 12345
-backup_server_port = 12346
+primary_server_port = 20001
+backup_server_port = 20002
 
 def load_backup():
     """Загружает расписание из файла бэкапа."""
@@ -45,7 +44,7 @@ def save_backup():
 async def handle_client(reader, writer):
     """Обрабатывает запрос клиента."""
     while True:
-        data = await reader.read(1024)
+        data = await reader.read(512)
         if not data:
             break
 
@@ -85,7 +84,7 @@ async def handle_client(reader, writer):
 
 
 async def update_schedule():
-    """Очищает расписание каждые 100 секунд."""
+    """Очищает расписание каждые n секунд."""
     while True:
         await asyncio.sleep(15)
         async with schedule_lock:

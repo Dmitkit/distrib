@@ -10,8 +10,8 @@ class ScheduleClientApp:
         self.root.geometry("400x400")
 
         # Адреса серверов
-        self.primary_server_address = ('localhost', 12345)
-        self.backup_server_address = ('localhost', 12346)
+        self.primary_server_address = ('localhost', 20001)
+        self.backup_server_address = ('localhost', 20002)
         self.schedule = []
         self.login = None
 
@@ -59,7 +59,8 @@ class ScheduleClientApp:
             writer.write(message.encode())
             await writer.drain()
 
-            data = await reader.read(1024)
+            data = await reader.read(512)
+            # print(f"Received {len(data)} bytes from server")
             writer.close()
             await writer.wait_closed()
 
@@ -81,7 +82,6 @@ class ScheduleClientApp:
             self.schedule = eval(response)
             self.update_schedule_ui()
 
-        # Планируем следующее обновление через 10 секунд
         if self.running:
             self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
