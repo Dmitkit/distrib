@@ -2,9 +2,11 @@ import asyncio
 import tkinter as tk
 from tkinter import ttk
 
+MAIN_SERVER_IS_OUT = False
 
 class ScheduleClientApp:
     def __init__(self, root):
+
         self.root = root
         self.root.title("Клиент расписания")
         self.root.geometry("400x400")
@@ -12,6 +14,7 @@ class ScheduleClientApp:
         # Адреса серверов
         self.primary_server_address = ('localhost', 20001)
         self.backup_server_address = ('localhost', 20002)
+
         self.schedule = []
         self.login = None
 
@@ -53,21 +56,17 @@ class ScheduleClientApp:
             print(f"Логин установлен: {self.login}")
 
     async def send_request(self, message, server_address):
-        """Асинхронно отправляет запрос на сервер и получает ответ."""
         try:
             reader, writer = await asyncio.open_connection(*server_address)
             writer.write(message.encode())
             await writer.drain()
-
             data = await reader.read(512)
-            # print(f"Received {len(data)} bytes from server")
             writer.close()
             await writer.wait_closed()
-
             return data.decode()
-        except Exception as e:
-            print(f"Ошибка подключения к серверу {server_address}: {e}")
+        except Exception:
             return None
+
 
     async def update_schedule(self):
         """Запрашивает расписание у сервера и обновляет интерфейс."""
@@ -75,7 +74,7 @@ class ScheduleClientApp:
 
         # Если основной сервер недоступен, переключаемся на резервный сервер
         if not response:
-            print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
+            # print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
             response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
 
         if response:
@@ -86,12 +85,12 @@ class ScheduleClientApp:
             self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
     def update_schedule_ui(self):
-        """Обновляет интерфейс с расписанием."""
         selected_indices = list(self.range_listbox.curselection())
 
         self.range_listbox.delete(0, tk.END)
 
-        for start_time, end_time, counter, color in self.schedule:
+    # Теперь данные расписания включают 5 элементов (включая версии)
+        for start_time, end_time, counter, color, _ in self.schedule:
             display_text = f"{start_time:02d}-{end_time:02d} (Занято: {counter})"
             self.range_listbox.insert(tk.END, display_text)
             self.range_listbox.itemconfig(tk.END, {'bg': color})
@@ -112,17 +111,24 @@ class ScheduleClientApp:
 
     async def handle_reservation(self, selected_ranges):
         """Обрабатывает резервирование выбранных диапазонов."""
-        ranges_message = f"{self.login}:{selected_ranges}"
-        response = await self.send_request(ranges_message, self.primary_server_address)
+        node_id = "ClientNode"  # Уникальный идентификатор клиента
+        ranges_message = f"{self.login}:{node_id}:{selected_ranges}"
+        response = None
+        global MAIN_SERVER_IS_OUT
 
-        # Если основной сервер недоступен, переключаемся на резервный сервер
-        if not response:
-            print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
+        if not MAIN_SERVER_IS_OUT:
+            response = await self.send_request(ranges_message, self.primary_server_address)
+            if not response:
+                MAIN_SERVER_IS_OUT = True
+                print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
+        else:
             response = await self.send_request(ranges_message, self.backup_server_address)
+
 
         if response:
             self.schedule = eval(response)
             self.update_schedule_ui()
+
 
     def on_closing(self):
         """Метод для обработки закрытия окна."""
