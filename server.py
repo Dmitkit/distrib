@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -108,19 +107,16 @@ async def sync_with_peer(peer_address):
 async def periodic_sync():
     """Периодически синхронизуирует расписание с другими узлами."""
     while True:
-        await asyncio.sleep(10)  # Интервал синхронизации
-        await sync_with_peer(('localhost', 20002))  # Например, резервный сервер
+        await asyncio.sleep(10)
+        await sync_with_peer(('localhost', 20002))
 
 
 async def main():
-    # Запуск сервера
     server = await asyncio.start_server(handle_client, 'localhost', 20001)
     logger.info("Сервер запущен на localhost:20001")
 
-    # Запуск периодической синхронизации
     asyncio.create_task(periodic_sync())
 
-    # Ожидание сервера
     async with server:
         await server.serve_forever()
 

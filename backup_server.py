@@ -1,6 +1,5 @@
 import asyncio
 
-# Расписание, аналогичное основному серверу
 schedule = [
     (9, 10, 0, 'green', {}),
     (10, 11, 0, 'green', {}),
@@ -17,7 +16,6 @@ schedule = [
 
 schedule_lock = asyncio.Lock()
 
-# Адрес основного сервера
 PRIMARY_SERVER_ADDRESS = ('localhost', 20001)
 
 
@@ -35,9 +33,8 @@ async def handle_client(reader, writer):
                 writer.write(str(schedule).encode())
                 await writer.drain()
         else:
-            # Обработка резервации
             login, node_id, ranges = message.split(":", 2)
-            ranges = eval(ranges)  # Преобразуем строку в список
+            ranges = eval(ranges)
             async with schedule_lock:
                 for start_time, end_time in ranges:
                     for i, (s, e, counter, color, versions) in enumerate(schedule):
@@ -63,7 +60,7 @@ async def sync_with_primary():
     """Периодическая синхронизация с основным сервером."""
     global schedule
     while True:
-        await asyncio.sleep(1)  # Интервал синхронизации
+        await asyncio.sleep(1)
         try:
             reader, writer = await asyncio.open_connection(*PRIMARY_SERVER_ADDRESS)
             writer.write("GET_SCHEDULE".encode())

@@ -11,7 +11,6 @@ class ScheduleClientApp:
         self.root.title("Клиент расписания")
         self.root.geometry("400x400")
 
-        # Адреса серверов
         self.primary_server_address = ('localhost', 20001)
         self.backup_server_address = ('localhost', 20002)
 
@@ -67,14 +66,12 @@ class ScheduleClientApp:
         except Exception:
             return None
 
-
     async def update_schedule(self):
         """Запрашивает расписание у сервера и обновляет интерфейс."""
         response = await self.send_request("GET_SCHEDULE", self.primary_server_address)
 
         # Если основной сервер недоступен, переключаемся на резервный сервер
         if not response:
-            # print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
             response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
 
         if response:
@@ -124,16 +121,15 @@ class ScheduleClientApp:
         else:
             response = await self.send_request(ranges_message, self.backup_server_address)
 
-
         if response:
             self.schedule = eval(response)
             self.update_schedule_ui()
-
 
     def on_closing(self):
         """Метод для обработки закрытия окна."""
         self.running = False
         self.root.quit()
+
 
 async def main():
     root = tk.Tk()
