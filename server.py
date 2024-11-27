@@ -1,5 +1,7 @@
+#server.py
 import asyncio
 import logging
+import sys
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -112,13 +114,20 @@ async def periodic_sync():
 
 
 async def main():
-    server = await asyncio.start_server(handle_client, 'localhost', 20001)
-    logger.info("Сервер запущен на localhost:20001")
+    if len(sys.argv) != 3:
+        print("Использование: python server.py <IP> <PORT>")
+        sys.exit(1)
 
-    asyncio.create_task(periodic_sync())
+    host = sys.argv[1]
+    port = int(sys.argv[2])
 
+    server = await asyncio.start_server(handle_client, host, port)
+    logger.info(f"Сервер запущен на {host}:{port}")
+
+    # Запуск сервера
     async with server:
         await server.serve_forever()
+
 
 
 if __name__ == "__main__":
