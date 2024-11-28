@@ -3,7 +3,13 @@ import asyncio
 import tkinter as tk
 from tkinter import ttk
 
+# Global server configuration
 MAIN_SERVER_IS_OUT = False
+DISPATCHER_IP = 'localhost'
+DISPATCHER_PORT = 30000
+BACKUP_SERVER_IP = 'localhost'
+BACKUP_SERVER_PORT = 20002
+
 
 class ScheduleClientApp:
     def __init__(self, root):
@@ -13,7 +19,7 @@ class ScheduleClientApp:
         self.root.geometry("400x400")
 
         self.primary_server_address = None
-        self.backup_server_address = ('localhost', 20002)
+        self.backup_server_address = (BACKUP_SERVER_IP, BACKUP_SERVER_PORT)
 
         asyncio.create_task(self.initialize_server_address())
 
@@ -60,7 +66,7 @@ class ScheduleClientApp:
         
     async def initialize_server_address(self):
         """Получает адрес сервера от диспетчера и сохраняет его."""
-        reader, writer = await asyncio.open_connection('localhost', 30000)  # Подключение к диспетчеру
+        reader, writer = await asyncio.open_connection(DISPATCHER_IP, DISPATCHER_PORT)  # Подключение к диспетчеру
         data = await reader.read(512)
         writer.close()
         await writer.wait_closed()
@@ -111,8 +117,7 @@ class ScheduleClientApp:
 
         self.range_listbox.delete(0, tk.END)
 
-    # Теперь данные расписания включают 5 элементов (включая версии)
-        for start_time, end_time, counter, color, _ in self.schedule:
+        for start_time, end_time, counter, color in self.schedule:
             display_text = f"{start_time:02d}-{end_time:02d} (Занято: {counter})"
             self.range_listbox.insert(tk.END, display_text)
             self.range_listbox.itemconfig(tk.END, {'bg': color})
@@ -135,8 +140,7 @@ class ScheduleClientApp:
 
     async def handle_reservation(self, selected_ranges):
         """Обрабатывает резервирование выбранных диапазонов."""
-        node_id = "ClientNode"  # Уникальный идентификатор клиента
-        ranges_message = f"{self.login}:{node_id}:{selected_ranges}"
+        ranges_message = f"{self.login}:{selected_ranges}"
         response = None
         global MAIN_SERVER_IS_OUT
 

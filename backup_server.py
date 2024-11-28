@@ -2,17 +2,17 @@
 import asyncio
 
 schedule = [
-    (9, 10, 0, 'green', {}),
-    (10, 11, 0, 'green', {}),
-    (11, 12, 0, 'green', {}),
-    (12, 13, 0, 'green', {}),
-    (13, 14, 0, 'green', {}),
-    (14, 15, 0, 'green', {}),
-    (15, 16, 0, 'green', {}),
-    (16, 17, 0, 'green', {}),
-    (17, 18, 0, 'green', {}),
-    (18, 19, 0, 'green', {}),
-    (19, 20, 0, 'green', {})
+    (9, 10, 0, 'green'),
+    (10, 11, 0, 'green'),
+    (11, 12, 0, 'green'),
+    (12, 13, 0, 'green'),
+    (13, 14, 0, 'green'),
+    (14, 15, 0, 'green'),
+    (15, 16, 0, 'green'),
+    (16, 17, 0, 'green'),
+    (17, 18, 0, 'green'),
+    (18, 19, 0, 'green'),
+    (19, 20, 0, 'green')
 ]
 
 schedule_lock = asyncio.Lock()
@@ -34,11 +34,11 @@ async def handle_client(reader, writer):
                 writer.write(str(schedule).encode())
                 await writer.drain()
         else:
-            login, node_id, ranges = message.split(":", 2)
+            login, ranges = message.split(":", 1)
             ranges = eval(ranges)
             async with schedule_lock:
                 for start_time, end_time in ranges:
-                    for i, (s, e, counter, color, versions) in enumerate(schedule):
+                    for i, (s, e, counter, color) in enumerate(schedule):
                         if s == start_time and e == end_time:
                             counter += 1
                             if counter > 4:
@@ -47,8 +47,7 @@ async def handle_client(reader, writer):
                                 color = 'red'
 
                             # Обновляем версию
-                            versions[node_id] = versions.get(node_id, 0) + 1
-                            schedule[i] = (s, e, counter, color, versions)
+                            schedule[i] = (s, e, counter, color)
                             break
                 writer.write(str(schedule).encode())
                 await writer.drain()
