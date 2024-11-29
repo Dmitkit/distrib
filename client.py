@@ -9,6 +9,8 @@ DISPATCHER_IP = 'localhost'
 DISPATCHER_PORT = 30000
 BACKUP_SERVER_IP = 'localhost'
 BACKUP_SERVER_PORT = 20002
+SCHEDULE_SERVER_IP = 'localhost'
+SCHEDULE_SERVER_PORT = 20000
 
 
 class ScheduleClientApp:
@@ -19,6 +21,7 @@ class ScheduleClientApp:
         self.root.geometry("400x400")
 
         self.primary_server_address = None
+        self.schedule_server_address = (SCHEDULE_SERVER_IP, SCHEDULE_SERVER_PORT)
         self.backup_server_address = (BACKUP_SERVER_IP, BACKUP_SERVER_PORT)
 
         asyncio.create_task(self.initialize_server_address())
@@ -97,7 +100,7 @@ class ScheduleClientApp:
         global MAIN_SERVER_IS_OUT
 
         if not MAIN_SERVER_IS_OUT:
-            response = await self.send_request("GET_SCHEDULE", self.primary_server_address)
+            response = await self.send_request("GET_SCHEDULE", self.schedule_server_address)
             if not response:
                 MAIN_SERVER_IS_OUT = True
                 response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
@@ -153,7 +156,17 @@ class ScheduleClientApp:
             response = await self.send_request(ranges_message, self.backup_server_address)
 
         if response:
-            self.schedule = eval(response)
+            selected_ranges_set = set(tuple(range_pair) for range_pair in selected_ranges)
+            # Увеличиваем счётчики в локальном расписании
+            for i, (start, end, count, color) in enumerate(self.schedule):
+                if (start, end) in selected_ranges_set:
+                    count += 1
+                    new_color = (
+                        'red' if count > 10 else
+                        'orange' if count > 4 else
+                        'green'
+                    )
+                    self.schedule[i] = (start, end, count, new_color)
             self.update_schedule_ui()
 
     def on_closing(self):

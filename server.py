@@ -2,11 +2,11 @@
 import asyncio
 import logging
 import sys
+import json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# Список расписания с поддержкой DVVS
 schedule = [
     (9 , 10, 0, 'green'),
     (10, 11, 0, 'green'),
@@ -52,11 +52,15 @@ async def handle_client(reader, writer):
             message = data.decode()
             logger.info(f"Получено сообщение от клиента {client_addr}: {message}")
 
-            if message == "GET_SCHEDULE":
+            if message == "GET_SERVER_DATA":
                 async with schedule_lock:
-                    writer.write(str(schedule).encode())
-                    await writer.drain()
-                logger.info(f"Отправлено расписание клиенту {client_addr}")
+                    server_data = {
+                        "schedule": schedule,
+                        "login_ranges": login_ranges
+                    }
+                writer.write(json.dumps(server_data).encode())
+                await writer.drain()
+                logger.info(f"Отправлены данные серверу расписания.")
             else:
                 # Обработка резервации
                 login, ranges = message.split(":", 1)
@@ -73,9 +77,10 @@ async def handle_client(reader, writer):
                                     color = 'red'
                                 schedule[i] = (s, e, counter, color)
                                 break
-                    writer.write(str(schedule).encode())
+                    writer.write(str(True).encode())
                     await writer.drain()
                 logger.info(f"Обработана резервация от клиента {login}: {ranges}")
+                
     except Exception as e:
         logger.error(f"Ошибка при обработке клиента {client_addr}: {e}")
     finally:
