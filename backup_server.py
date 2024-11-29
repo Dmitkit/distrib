@@ -1,6 +1,10 @@
 #backup_server
 import asyncio
+from logger_setup import get_logger
 
+logger = get_logger(__name__)
+
+# Список расписания
 schedule = [
     (9, 10, 0, 'green'),
     (10, 11, 0, 'green'),
@@ -12,7 +16,7 @@ schedule = [
     (16, 17, 0, 'green'),
     (17, 18, 0, 'green'),
     (18, 19, 0, 'green'),
-    (19, 20, 0, 'green')
+    (19, 20, 0, 'green'),
 ]
 
 schedule_lock = asyncio.Lock()
@@ -73,14 +77,14 @@ async def sync_with_primary():
             writer.close()
             await writer.wait_closed()
         except Exception as e:
-            print(f"Не удалось синхронизироваться с основным сервером: {e}")
+            logger.info(f"Не удалось синхронизироваться с основным сервером: {e}")
 
 
 async def main():
     server = await asyncio.start_server(handle_client, 'localhost', 20002)
     asyncio.create_task(sync_with_primary())
     async with server:
-        print("Резервный сервер запущен на localhost:20002")
+        logger.info("Резервный сервер запущен на localhost:20002")
         await server.serve_forever()
 
 

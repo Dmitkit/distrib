@@ -2,8 +2,10 @@
 import asyncio
 import tkinter as tk
 from tkinter import ttk
+from logger_setup import get_logger
 
-# Global server configuration
+logger = get_logger(__name__)
+
 MAIN_SERVER_IS_OUT = False
 DISPATCHER_IP = 'localhost'
 DISPATCHER_PORT = 30000
@@ -14,8 +16,9 @@ SCHEDULE_SERVER_PORT = 20000
 
 
 class ScheduleClientApp:
-    def __init__(self, root):
+    """Клиентское приложение для работы с расписанием."""
 
+    def __init__(self, root):
         self.root = root
         self.root.title("Клиент расписания")
         self.root.geometry("400x400")
@@ -45,7 +48,7 @@ class ScheduleClientApp:
         self.schedule_frame.pack(fill=tk.BOTH, expand=True)
 
         self.range_listbox = tk.Listbox(
-            root, selectmode=tk.MULTIPLE, height=10)
+            root, selectmode=tk.MULTIPLE, height=11)
         self.range_listbox.pack(pady=5)
 
         self.reserve_button = ttk.Button(
@@ -64,22 +67,24 @@ class ScheduleClientApp:
         if self.login:
             self.save_login_button["state"] = "disabled"
             self.login_entry["state"] = "disabled"
-            print(f"Логин установлен: {self.login}")
+            logger.info(f"Логин установлен: {self.login}")
 
         
     async def initialize_server_address(self):
         """Получает адрес сервера от диспетчера и сохраняет его."""
-        reader, writer = await asyncio.open_connection(DISPATCHER_IP, DISPATCHER_PORT)  # Подключение к диспетчеру
-        data = await reader.read(512)
-        writer.close()
-        await writer.wait_closed()
+        try:
+            reader, writer = await asyncio.open_connection(DISPATCHER_IP, DISPATCHER_PORT)
+            data = await reader.read(512)
+            writer.close()
+            await writer.wait_closed()
 
-        # Сохраняем адрес сервера
-        self.primary_server_address = tuple(data.decode().split(":"))
-        print(f"Получен адрес сервера: {self.primary_server_address}")
-
+            self.primary_server_address = tuple(data.decode().split(":"))
+            logger.info(f"Получен адрес сервера: {self.primary_server_address}")
+        except Exception as e:
+            logger.error(f"Ошибка при получении адреса сервера: {e}")
 
     async def send_request(self, message, server_address):
+        """Отправляет запрос на сервер."""
         try:
             reader, writer = await asyncio.open_connection(*server_address)
             writer.write(message.encode())
@@ -88,21 +93,20 @@ class ScheduleClientApp:
             writer.close()
             await writer.wait_closed()
             return data.decode()
-        except Exception:
+        except Exception as e:
+            logger.error(f"Ошибка отправки запроса: {e}")
             return None
-        
 
     async def update_schedule(self):
         """Запрашивает расписание у сервера и обновляет интерфейс."""
         response = None
-
-        # Если основной сервер недоступен, переключаемся на резервный сервер
         global MAIN_SERVER_IS_OUT
 
         if not MAIN_SERVER_IS_OUT:
             response = await self.send_request("GET_SCHEDULE", self.schedule_server_address)
             if not response:
                 MAIN_SERVER_IS_OUT = True
+                logger.warning("Основной сервер недоступен. Переключаемся на резервный сервер.")
                 response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
         else:
             response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
@@ -114,10 +118,9 @@ class ScheduleClientApp:
         if self.running:
             self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
-
     def update_schedule_ui(self):
+        """Обновляет графический интерфейс расписания."""
         selected_indices = list(self.range_listbox.curselection())
-
         self.range_listbox.delete(0, tk.END)
 
         for start_time, end_time, counter, color in self.schedule:
@@ -128,18 +131,17 @@ class ScheduleClientApp:
         for index in selected_indices:
             self.range_listbox.select_set(index)
 
-    
     def reserve_ranges(self):
         """Резервирует выбранные диапазоны."""
         if not self.login:
-            print("Логин не установлен!")
+            logger.info("Логин не установлен!")
             return
 
         selected_indices = self.range_listbox.curselection()
         selected_ranges = [self.schedule[i][0:2] for i in selected_indices]
+
         if selected_ranges:
             asyncio.create_task(self.handle_reservation(selected_ranges))
-
 
     async def handle_reservation(self, selected_ranges):
         """Обрабатывает резервирование выбранных диапазонов."""
@@ -151,7 +153,8 @@ class ScheduleClientApp:
             response = await self.send_request(ranges_message, self.primary_server_address)
             if not response:
                 MAIN_SERVER_IS_OUT = True
-                print("Основной сервер недоступен, пытаемся подключиться к резервному серверу.")
+                logger.warning("Основной сервер недоступен. Переключаемся на резервный сервер.")
+                response = await self.send_request(ranges_message, self.backup_server_address)
         else:
             response = await self.send_request(ranges_message, self.backup_server_address)
 
@@ -184,7 +187,7 @@ async def main():
             app.root.update()
             await asyncio.sleep(0.01)
     except tk.TclError:
-        print("Окно закрыто, приложение завершено.")
+        logger.info("Окно закрыто, приложение завершено.")
 
 
 if __name__ == "__main__":

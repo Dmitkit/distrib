@@ -1,9 +1,9 @@
+#schedule_server.py
 import asyncio
-import logging
 import json
+from logger_setup import get_logger
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Список расписания
 schedule = [
@@ -17,12 +17,13 @@ schedule = [
     (16, 17, 0, 'green'),
     (17, 18, 0, 'green'),
     (18, 19, 0, 'green'),
-    (19, 20, 0, 'green')
+    (19, 20, 0, 'green'),
 ]
 
 connected_servers = [("localhost", 20001), ("localhost", 20003), ("localhost", 20004) ]  # IP и PORT обычных серверов
 
 schedule_lock = asyncio.Lock()
+
 
 async def fetch_server_data(ip, port):
     try:
