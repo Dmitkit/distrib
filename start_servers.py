@@ -15,12 +15,12 @@ def main():
         {"socket" : ("localhost", 20001), "connected_ip" : ("localhost", 20003), "my_number" : 1},
         {"socket" : ("localhost", 20003), "connected_ip" : ("localhost", 20004), "my_number" : 2},
         {"socket" : ("localhost", 20004), "connected_ip" : ("localhost", 20001), "my_number" : 3},
-    ]  
+    ]
 
     processes = []
     try:
         for server in servers:
-            ip, port = server["socket"],
+            ip, port = server["socket"]
             connected_ip, connected_port = server["connected_ip"]
             my_number = server["my_number"]
             process = start_server(ip, port, connected_ip, connected_port, my_number)

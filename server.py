@@ -92,8 +92,9 @@ async def handle_client(reader, writer):
 
 
 async def main():
-    if len(sys.argv) != 3:
-        logger.info("Использование: python server.py <IP> <PORT>")
+    if len(sys.argv) > 6:
+        logger.info("Использование: python server.py <IP> <PORT>"
+                    "<IP_SERVER_TO_CONNECT> <PORT_SERVER_TO_CONNECT> <MY_NUMBER_IN_TIME_VECTOR>")
         sys.exit(1)
 
     host = sys.argv[1]
