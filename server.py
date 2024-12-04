@@ -96,6 +96,9 @@ async def main():
 
     host = sys.argv[1]
     port = int(sys.argv[2])
+    host_of_server_to_connect = sys.argv[3]
+    port_of_server_to_connect = int(sys.argv[4])
+    my_number_in_time_vector = int(sys.argv[5])
 
     server = await asyncio.start_server(handle_client, host, port)
     logger.info(f"Сервер запущен на {host}:{port}")
