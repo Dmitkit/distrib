@@ -20,7 +20,11 @@ schedule = [
     (19, 20, 0, 'green'),
 ]
 
-connected_servers = [("localhost", 20001), ("localhost", 20003), ("localhost", 20004) ]  # IP и PORT обычных серверов
+connected_servers = [
+    ('localhost', 20001),
+    ('localhost', 20002),
+    ('localhost', 20003),
+]
 
 schedule_lock = asyncio.Lock()
 

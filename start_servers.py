@@ -12,9 +12,9 @@ def start_server(ip, port, connected_ip, connected_port, my_number):
 
 def main():
     servers = [
-        {"socket" : ("localhost", 20001), "connected_ip" : ("localhost", 20003), "my_number" : 1},
-        {"socket" : ("localhost", 20003), "connected_ip" : ("localhost", 20004), "my_number" : 2},
-        {"socket" : ("localhost", 20004), "connected_ip" : ("localhost", 20001), "my_number" : 3},
+        {"socket" : ("localhost", 20001), "connected_ip" : ("localhost", 20002), "my_number" : 1},
+        {"socket" : ("localhost", 20002), "connected_ip" : ("localhost", 20003), "my_number" : 2},
+        {"socket" : ("localhost", 20003), "connected_ip" : ("localhost", 20001), "my_number" : 3},
     ]
 
     processes = []

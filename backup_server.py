@@ -81,10 +81,10 @@ async def sync_with_primary():
 
 
 async def main():
-    server = await asyncio.start_server(handle_client, 'localhost', 20002)
+    server = await asyncio.start_server(handle_client, 'localhost', 20004)
     asyncio.create_task(sync_with_primary())
     async with server:
-        logger.info("Резервный сервер запущен на localhost:20002")
+        logger.info("Резервный сервер запущен на localhost:20004")
         await server.serve_forever()
 
 

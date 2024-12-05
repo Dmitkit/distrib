@@ -7,8 +7,8 @@ logger = get_logger(__name__)
 # Список серверов, с которыми работает балансировщик
 servers = [
     ('localhost', 20001),
+    ('localhost', 20002),
     ('localhost', 20003),
-    ('localhost', 20004),
 ]
 
 counter = 0
