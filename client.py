@@ -294,7 +294,7 @@ class ScheduleClientApp:
 
     async def handle_reservation(self, selected_ranges):
         """Обрабатывает резервирование выбранных диапазонов."""
-        ranges_message = f"{self.login}:{selected_ranges}"
+        ranges_message = f"CLIENT:{self.login}:{selected_ranges}"
         response = None
         global MAIN_SERVER_IS_OUT
 

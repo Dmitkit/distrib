@@ -45,7 +45,7 @@ class ScheduleClientApp:
         self.schedule_frame.pack(fill=tk.BOTH, expand=True)
 
         self.range_listbox = tk.Listbox(
-            root, selectmode=tk.MULTIPLE, height=10)
+            root, selectmode=tk.MULTIPLE, height=11)
         self.range_listbox.pack(pady=5)
 
         self.reserve_button = ttk.Button(
@@ -143,7 +143,7 @@ class ScheduleClientApp:
 
     async def handle_reservation(self, selected_ranges):
         """Обрабатывает резервирование выбранных диапазонов."""
-        ranges_message = f"{self.login}:{selected_ranges}"
+        ranges_message = f"CLIENT:{self.login}:{selected_ranges}"
         response = None
         global MAIN_SERVER_IS_OUT
 
