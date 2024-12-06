@@ -115,7 +115,7 @@ async def handle_connection(reader, writer):
                 async with schedule_lock:
                     server_data = {
                         "schedule": schedule,
-                        "login_ranges": login_ranges,
+                        "login_ranges": {k: {str(key): value for key, value in v.items()} for k, v in login_ranges.items()},
                         # "vector": vector
                     }
                 writer.write(json.dumps(server_data).encode())
@@ -125,8 +125,8 @@ async def handle_connection(reader, writer):
                 message = message[len("CLIENT:"):].strip()
                 # Обработка резервации
                 login, ranges = message.split(":", 1)
-                add_range_for_login(login, ranges) # Добавляет диапазоны для логина
                 ranges = eval(ranges)
+                add_range_for_login(login, ranges) # Добавляет диапазоны для логина
 
                 async with schedule_lock:
                     for start_time, end_time in ranges:
