@@ -1,6 +1,7 @@
 #schedule_server.py
 import asyncio
 import json
+import random
 from logger_setup import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +28,80 @@ connected_servers = [
 ]
 
 schedule_lock = asyncio.Lock()
+login_ranges = {}
+
+
+def vectors_ordered(v1, v2):
+    """Проверяет, могут ли два вектора быть упорядочены."""
+    return all(a <= b for a, b in zip(v1, v2)) or all(a >= b for a, b in zip(v1, v2))
+
+
+def build_partially_ordered_sets(vectors):
+    """Создает частично упорядоченные множества, оставляя только минимальные векторы."""
+    sorted_vectors = sorted(vectors)
+    ordered_sets = []
+
+    for v in sorted_vectors:
+        added = False
+        for ordered_set in ordered_sets:
+            if all(vectors_ordered(v, existing_vector) for existing_vector in ordered_set):
+                # Проверяем, является ли текущий вектор минимальным
+                if all(not vectors_ordered(existing_vector, v) for existing_vector in ordered_set):
+                    # Удаляем векторы, которые больше текущего
+                    ordered_set[:] = [existing_vector for existing_vector in ordered_set if not vectors_ordered(existing_vector, v)]
+                    ordered_set.append(v)
+                added = True
+                break
+        if not added:
+            ordered_sets.append([v])
+
+    return ordered_sets
+
+
+def select_randomly_from_sets(ordered_sets):
+    """Выбираем случайное значение из минимальных векторов каждого множества."""
+    selected = []
+    for s in ordered_sets:
+        first_value = min(s)
+        selected.append(first_value)
+
+    return random.choice(selected)
+
+
+def generate_final_schedule(schedule, login_ranges):
+    """Генерация итогового расписания с учетом частично упорядоченных множеств."""
+    reserved_logins = set()
+    final_schedule = []
+
+    for s, e, _, _ in schedule:
+        # Собираем всех кандидатов для текущего диапазона
+        candidates = []
+        for login, ranges in login_ranges.items():
+            time_range_key = f"({s}, {e})"
+            if time_range_key in ranges and login not in reserved_logins:
+                candidates.append((login, ranges[time_range_key]))
+
+        # Извлекаем векторы из кандидатов
+        candidate_vectors = [vector for _, vector in candidates]
+
+        if candidate_vectors:
+            # Построение частично упорядоченных множеств
+            ordered_sets = build_partially_ordered_sets(candidate_vectors)
+
+            # Выбор минимального вектора из множеств
+            selected_vector = select_randomly_from_sets(ordered_sets)
+
+            # Найти логин, соответствующий выбранному вектору
+            selected_login = next(
+                login for login, vector in candidates if vector == selected_vector
+            )
+            reserved_logins.add(selected_login)
+            final_schedule.append((s, e, selected_login))
+        else:
+            # Если кандидатов нет, слот остается свободным
+            final_schedule.append((s, e, None))
+
+    return final_schedule
 
 
 async def fetch_server_data(ip, port):
@@ -46,7 +121,7 @@ async def fetch_server_data(ip, port):
     
 
 async def aggregate_schedules():
-    global schedule
+    global schedule, login_ranges
     while True:
         try:
             # Параллельный сбор данных от всех серверов
@@ -83,7 +158,11 @@ async def aggregate_schedules():
             # Обновляем расписание и логины
             async with schedule_lock:
                 schedule[:] = new_schedule
-                logger.info("Обновлено общее расписание.")
+                login_ranges = aggregated_login_ranges
+
+            # Генерация финального расписания
+            final_schedule = generate_final_schedule(schedule, login_ranges)
+            logger.info(f"Итоговое расписание: {final_schedule}")
         except Exception as e:
             logger.error(f"Ошибка во время агрегации расписания: {e}")
 
