@@ -159,10 +159,7 @@ async def aggregate_schedules():
             async with schedule_lock:
                 schedule[:] = new_schedule
                 login_ranges = aggregated_login_ranges
-
-            # Генерация финального расписания
-            final_schedule = generate_final_schedule(schedule, login_ranges)
-            logger.info(f"Итоговое расписание: {final_schedule}")
+                logger.info("Обновлено общее расписание.")
         except Exception as e:
             logger.error(f"Ошибка во время агрегации расписания: {e}")
 
@@ -196,13 +193,29 @@ async def handle_client(reader, writer):
         await writer.wait_closed()
 
 
+async def periodic_schedule_generation():
+    """Функция, которая раз в час генерирует итоговое расписание."""
+    global schedule, login_ranges
+    while True:
+        try:
+            async with schedule_lock:
+                final_schedule = generate_final_schedule(schedule, login_ranges)
+            logger.info(f"Итоговое расписание сгенерировано: {final_schedule}")            
+            
+        except Exception as e:
+            logger.error(f"Ошибка при генерации итогового расписания: {e}")
+
+        await asyncio.sleep(3600)
+
+
 async def main():
     host = 'localhost'
     port = 20000
 
     server = await asyncio.start_server(handle_client, host, port)
     logger.info(f"Центральный сервер расписания запущен на {host}:{port}")
-    asyncio.create_task(aggregate_schedules())
+    asyncio.create_task(aggregate_schedules())    
+    asyncio.create_task(periodic_schedule_generation())
 
     async with server:
         await server.serve_forever()
