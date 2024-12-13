@@ -3,6 +3,7 @@ import asyncio
 import json
 import random
 from logger_setup import get_logger
+import websockets
 
 logger = get_logger(__name__)
 
@@ -29,6 +30,7 @@ connected_servers = [
 
 schedule_lock = asyncio.Lock()
 login_ranges = {}
+clients = set()
 
 
 def vectors_ordered(v1, v2):
@@ -204,33 +206,100 @@ async def handle_client(reader, writer):
         writer.close()
         await writer.wait_closed()
 
-
 async def periodic_schedule_generation():
-    """Функция, которая раз в час генерирует итоговое расписание."""
-    global schedule, login_ranges
+    global schedule, login_ranges, clients, connected_clients
     while True:
         try:
             async with schedule_lock:
                 final_schedule = generate_final_schedule(schedule, login_ranges)
-            logger.info(f"Итоговое расписание сгенерировано: {final_schedule}")            
-            
+                
+                occupied_slots = {}
+                for start, end, login in final_schedule:
+                    if login:
+                        time_range_key = f"({start}, {end})"
+                        occupied_slots[time_range_key] = login
+                        
+                        success_message = {
+                            "type": "notification",
+                            "status": "success",
+                            "login": login,
+                            "start": start,
+                            "end": end,
+                            "message": f"Your reservation for {start}:00 - {end}:00 is confirmed!"
+                        }
+                        
+                        rejection_message = {
+                            "type": "notification",
+                            "status": "rejected",
+                            "start": start,
+                            "end": end,
+                            "message": f"The slot {start}:00 - {end}:00 has been assigned to another user."
+                        }
+                        
+                        for websocket, client_login in connected_clients.items():
+                            try:
+                                if client_login == login:
+                                    await websocket.send(json.dumps(success_message))
+                                    logger.info(f"Success notification sent to {login}")
+                                elif time_range_key in login_ranges.get(client_login, []):
+                                    await websocket.send(json.dumps(rejection_message))
+                                    logger.info(f"Rejection notification sent to {client_login}")
+                                    
+                                    if client_login in login_ranges:
+                                        login_ranges[client_login].remove(time_range_key)
+                            except Exception as e:
+                                logger.error(f"Error sending notification: {e}")
+                
+                logger.info(f"Final schedule generated and notifications sent: {final_schedule}")
+                logger.info(f"Occupied slots: {occupied_slots}")
+                
         except Exception as e:
-            logger.error(f"Ошибка при генерации итогового расписания: {e}")
+            logger.exception(f"Error in schedule generation and notification: {e}")
 
-        await asyncio.sleep(3600)
+        await asyncio.sleep(60)
+
+connected_clients = {}  # Maps WebSocket connections to client logins
+
+async def handler(websocket):
+    global clients, connected_clients
+    clients.add(websocket)
+    try:
+        logger.info(f"Клиент подключился: {websocket.remote_address}")
+        message = await websocket.recv()
+        client_info = json.loads(message)
+        if client_info["type"] == "client_connected":
+            client_login = client_info["login"]
+            connected_clients[websocket] = client_login
+            logger.info(f"Клиент идентифицирован: {client_login}")
+            
+        while True:
+            message = await websocket.recv()
+            
+    except websockets.exceptions.ConnectionClosedOK:
+        logger.info(f"Клиент отключился: {websocket.remote_address}")
+    except websockets.exceptions.ConnectionClosedError:
+        logger.warning(f"Ошибка соединения с клиентом: {websocket.remote_address}")
+    finally:
+        clients.remove(websocket)
+        if websocket in connected_clients:
+            del connected_clients[websocket]
 
 
 async def main():
     host = 'localhost'
     port = 20000
+    global clients
+    clients = set()
 
     server = await asyncio.start_server(handle_client, host, port)
     logger.info(f"Центральный сервер расписания запущен на {host}:{port}")
-    asyncio.create_task(aggregate_schedules())    
+    websocket_server = await websockets.serve(handler, 'localhost', 20005)
+    logger.info("WebSocket-сервер запущен на порту 20005")
+    asyncio.create_task(aggregate_schedules())
     asyncio.create_task(periodic_schedule_generation())
 
-    async with server:
-        await server.serve_forever()
+    async with server, websocket_server:
+        await asyncio.gather(server.serve_forever(), websocket_server.wait_closed())
 
 
 if __name__ == "__main__":
