@@ -53,9 +53,9 @@ async def forward_to_other_server():
         writer.close()
         await writer.wait_closed()
 
-        logger.info(f"Данные (вектор времени) отправлены на сервер {next_server_host}:{next_server_port}")
+        logger.info(f"{host}:{port} Вектор времени отправлен на сервер {next_server_host}:{next_server_port}")
     except Exception as e:
-        logger.error(f"Ошибка при отправке данных на другой сервер: {e}")
+        logger.error(f"{host}:{port} Ошибка при отправке вектора времени на другой сервер: {e}")
 
 
 async def send_vector_periodically():
@@ -93,24 +93,24 @@ async def handle_connection(reader, writer):
     """Обрабатывает входящие подключения (от клиентов или других серверов)."""
     global vector
     client_addr = writer.get_extra_info('peername')
-    logger.info(f"Клиент подключился: {client_addr}")
+    logger.debug(f"{host}:{port} Подключение: {client_addr}")
 
     try:
         while True:
             data = await reader.read(512)
             if not data:
-                logger.info(f"Клиент {client_addr} отключился.")
+                logger.debug(f"{host}:{port} Отключение: {client_addr}")
                 break
 
             message = data.decode()
-            logger.info(f"Получено сообщение от клиента {client_addr}: {message}")
+            logger.debug(f"{host}:{port} Получено сообщение от {client_addr}: {message}")
 
-            if message.startswith("VECTOR:"):  # Если это вектор времени
+            if message.startswith("VECTOR:"):
                 # Извлекаем вектор времени после префикса "VECTOR:"
                 vector_data = message[len("VECTOR:"):].strip()
                 received_vector = list(map(int, vector_data.split(",")))
                 vector = merge_vectors(received_vector)
-                logger.info(f"Обновлен вектор времени: {vector}")
+                logger.info(f"{host}:{port} Полученен вектор времени: {received_vector}. Обновлённый вектор времени: {vector}")
             elif message == "GET_SERVER_DATA":
                 async with schedule_lock:
                     server_data = {
@@ -120,7 +120,7 @@ async def handle_connection(reader, writer):
                     }
                 writer.write(json.dumps(server_data).encode())
                 await writer.drain()
-                logger.info("Отправлены данные серверу расписания.")
+                logger.info(f"{host}:{port} Отправлены данные серверу расписания.")
             elif message.startswith("CLIENT:"):
                 message = message[len("CLIENT:"):].strip()
                 # Обработка резервации
@@ -142,10 +142,10 @@ async def handle_connection(reader, writer):
 
                     writer.write(str(True).encode())
                     await writer.drain()
-                logger.info(f"Обработана резервация от клиента {login}: {ranges}")
+                logger.info(f"{host}:{port} Обработана резервация от клиента {login}: {ranges}")
 
     except Exception as e:
-        logger.error(f"Ошибка при обработке клиента {client_addr}: {e}")
+        logger.error(f"{host}:{port} Ошибка при обработке {client_addr}: {e}")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -164,10 +164,9 @@ async def main():
         logger.info("Использование: python server.py <IP> <PORT> <IP_SERVER_TO_CONNECT> <PORT_SERVER_TO_CONNECT> <MY_NUMBER_IN_TIME_VECTOR>")
         sys.exit(1)
 
+    global host, port, next_server_host, next_server_port, my_number
     host = sys.argv[1]
     port = int(sys.argv[2])
-
-    global next_server_host, next_server_port, my_number
     next_server_host = sys.argv[3]
     next_server_port = int(sys.argv[4])
     my_number = int(sys.argv[5])
