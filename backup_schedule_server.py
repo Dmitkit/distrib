@@ -1,4 +1,4 @@
-#schedule_server.py
+#backup_schedule_server.py
 import asyncio
 import json
 import random
@@ -27,8 +27,44 @@ connected_servers = [
     ('localhost', 20003),
 ]
 
+backup_schedule = []
+backup_login_ranges = {}
+
 schedule_lock = asyncio.Lock()
-login_ranges = {}
+main_server_host = 'localhost'
+main_server_port = 20000
+
+
+async def fetch_data_from_main_server():
+    """Периодически запрашивает данные с основного сервера."""
+    global backup_schedule, backup_login_ranges
+
+    while True:
+        try:
+            logger.info("Запрос данных с основного сервера...")
+            reader, writer = await asyncio.open_connection(main_server_host, main_server_port)
+
+            # Отправляем запрос данных
+            writer.write(b"GET_SERVER_DATA")
+            await writer.drain()
+
+            # Читаем ответ
+            data = await reader.read(2048)
+            writer.close()
+            await writer.wait_closed()
+
+            # Обновляем данные резервного сервера
+            server_data = json.loads(data.decode())
+            async with schedule_lock:
+                backup_schedule = server_data["schedule"]
+                backup_login_ranges = server_data["login_ranges"]
+
+            logger.info("Данные с основного сервера успешно обновлены.")
+        except Exception as e:
+            logger.error(f"Ошибка при запросе данных с основного сервера: {e}")
+        
+        # Запрашиваем данные каждые 5 секунд
+        await asyncio.sleep(5)
 
 
 def vectors_ordered(v1, v2):
@@ -167,7 +203,7 @@ async def aggregate_schedules():
 
 
 async def handle_client(reader, writer):
-    """Обрабатывает запросы клиентов и резервного сервера."""
+    """Обрабатывает запросы клиентов на получение расписания."""
     client_addr = writer.get_extra_info('peername')
     logger.info(f"Клиент подключился: {client_addr}")
 
@@ -186,18 +222,6 @@ async def handle_client(reader, writer):
                     writer.write(str(schedule).encode())
                     await writer.drain()
                 logger.info(f"Отправлено расписание клиенту {client_addr}")
-
-            elif message == "GET_SERVER_DATA":
-                # Отправляем расписание и login_ranges резервному серверу
-                async with schedule_lock:
-                    server_data = {
-                        "schedule": schedule,
-                        "login_ranges": login_ranges,
-                    }
-                writer.write(json.dumps(server_data).encode())
-                await writer.drain()
-                logger.info(f"Отправлены данные резервному серверу {client_addr}")
-
     except Exception as e:
         logger.error(f"Ошибка при обработке клиента {client_addr}: {e}")
     finally:
@@ -222,10 +246,13 @@ async def periodic_schedule_generation():
 
 async def main():
     host = 'localhost'
-    port = 20000
+    port = 20010
 
     server = await asyncio.start_server(handle_client, host, port)
-    logger.info(f"Центральный сервер расписания запущен на {host}:{port}")
+    logger.info(f"Резервный сервер запущен на {host}:{port}")
+
+    # Запуск фонового процесса синхронизации с основным сервером
+    asyncio.create_task(fetch_data_from_main_server())
     asyncio.create_task(aggregate_schedules())    
     asyncio.create_task(periodic_schedule_generation())
 

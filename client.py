@@ -8,13 +8,13 @@ from tkinter import messagebox
 
 logger = get_logger(__name__)
 
-MAIN_SERVER_IS_OUT = False
+SCHEDULE_SERVER_IS_OUT = False
 DISPATCHER_IP = 'localhost'
 DISPATCHER_PORT = 30000
-BACKUP_SERVER_IP = 'localhost'
-BACKUP_SERVER_PORT = 20004
 SCHEDULE_SERVER_IP = 'localhost'
 SCHEDULE_SERVER_PORT = 20000
+BACKUP_SCHEDULE_SERVER_IP = 'localhost'
+BACKUP_SCHEDULE_SERVER_PORT = 20010
 
 
 class ScheduleClientApp:
@@ -40,7 +40,7 @@ class ScheduleClientApp:
 
         self.primary_server_address = None
         self.schedule_server_address = (SCHEDULE_SERVER_IP, SCHEDULE_SERVER_PORT)
-        self.backup_server_address = (BACKUP_SERVER_IP, BACKUP_SERVER_PORT)
+        self.backup_server_address = (BACKUP_SCHEDULE_SERVER_IP, BACKUP_SCHEDULE_SERVER_PORT)
 
         asyncio.create_task(self.initialize_server_address())
 
@@ -181,12 +181,12 @@ class ScheduleClientApp:
     async def update_schedule(self):
         """Запрашивает расписание у сервера и обновляет интерфейс."""
         response = None
-        global MAIN_SERVER_IS_OUT
+        global SCHEDULE_SERVER_IS_OUT
 
-        if not MAIN_SERVER_IS_OUT:
+        if not SCHEDULE_SERVER_IS_OUT:
             response = await self.send_request("GET_SCHEDULE", self.schedule_server_address)
             if not response:
-                MAIN_SERVER_IS_OUT = True
+                SCHEDULE_SERVER_IS_OUT = True
                 logger.warning("Основной сервер недоступен. Переключаемся на резервный сервер.")
                 response = await self.send_request("GET_SCHEDULE", self.backup_server_address)
         else:
@@ -291,21 +291,10 @@ class ScheduleClientApp:
                         return "break"  # Prevent selection
         return None
 
-
     async def handle_reservation(self, selected_ranges):
         """Обрабатывает резервирование выбранных диапазонов."""
         ranges_message = f"CLIENT:{self.login}:{selected_ranges}"
-        response = None
-        global MAIN_SERVER_IS_OUT
-
-        if not MAIN_SERVER_IS_OUT:
-            response = await self.send_request(ranges_message, self.primary_server_address)
-            if not response:
-                MAIN_SERVER_IS_OUT = True
-                logger.warning("Основной сервер недоступен. Переключаемся на резервный сервер.")
-                response = await self.send_request(ranges_message, self.backup_server_address)
-        else:
-            response = await self.send_request(ranges_message, self.backup_server_address)
+        response = await self.send_request(ranges_message, self.primary_server_address)
 
         if response:
             if self.login not in self.login_ranges:
@@ -315,6 +304,8 @@ class ScheduleClientApp:
             # Update UI
             self.update_schedule_ui()
             messagebox.showinfo("Success", "Time slots successfully reserved!")
+        else:
+            messagebox.showerror("Error", "Primary server is unavailable!")
 
     def on_closing(self):
         """Метод для обработки закрытия окна."""
