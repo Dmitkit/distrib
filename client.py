@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 from logger_setup import get_logger
 from tkinter import messagebox
+import websockets
+import json
 
 
 logger = get_logger(__name__)
@@ -46,6 +48,7 @@ class ScheduleClientApp:
 
         self.schedule = []
         self.login = None
+        self.websocket_task = None
 
         # Ввод логина
         login_frame = ttk.Frame(root, style='Custom.TFrame')
@@ -89,11 +92,9 @@ class ScheduleClientApp:
         listbox_frame = ttk.Frame(root, style='Custom.TFrame')
         listbox_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         
-        # Scrollbar
         scrollbar = ttk.Scrollbar(listbox_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Enhanced Listbox
         self.range_listbox = tk.Listbox(
             listbox_frame,
             selectmode=tk.MULTIPLE,
@@ -107,11 +108,9 @@ class ScheduleClientApp:
         )
         self.range_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        # Connect scrollbar to listbox
         scrollbar.config(command=self.range_listbox.yview)
         self.range_listbox.config(yscrollcommand=scrollbar.set)
         
-        # Enhanced Reserve Button
         self.reserve_button = tk.Button(
             root,
             text="Reserve Selected Slots",
@@ -126,7 +125,6 @@ class ScheduleClientApp:
         )
         self.reserve_button.pack(pady=20)
         
-        # Button hover effects
         def on_enter(e):
             e.widget['background'] = '#1565c0' if e.widget == self.save_login_button else '#1b5e20'
             
@@ -143,16 +141,13 @@ class ScheduleClientApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def set_login(self):
-        """Сохраняет логин клиента."""
         self.login = self.login_entry.get().strip()
         if self.login:
             self.save_login_button["state"] = "disabled"
             self.login_entry["state"] = "disabled"
             logger.info(f"Логин установлен: {self.login}")
-
         
     async def initialize_server_address(self):
-        """Получает адрес сервера от диспетчера и сохраняет его."""
         try:
             reader, writer = await asyncio.open_connection(DISPATCHER_IP, DISPATCHER_PORT)
             data = await reader.read(512)
@@ -165,7 +160,6 @@ class ScheduleClientApp:
             logger.error(f"Ошибка при получении адреса сервера: {e}")
 
     async def send_request(self, message, server_address):
-        """Отправляет запрос на сервер."""
         try:
             reader, writer = await asyncio.open_connection(*server_address)
             writer.write(message.encode())
@@ -179,7 +173,6 @@ class ScheduleClientApp:
             return None
 
     async def update_schedule(self):
-        """Запрашивает расписание у сервера и обновляет интерфейс."""
         response = None
         global SCHEDULE_SERVER_IS_OUT
 
@@ -200,7 +193,6 @@ class ScheduleClientApp:
             self.root.after(2000, lambda: asyncio.create_task(self.update_schedule()))
 
     def update_schedule_ui(self):
-        """Updates the schedule UI with enhanced styling and disables reserved slots."""
         selected_indices = list(self.range_listbox.curselection())
         self.range_listbox.delete(0, tk.END)
         
@@ -217,7 +209,6 @@ class ScheduleClientApp:
             display_text = f" {start_time:02d}:00 - {end_time:02d}:00  (Reserved: {counter})"
             self.range_listbox.insert(tk.END, display_text)
             
-            # Enhanced colors with better visibility
             bg_colors = {
                 'green': '#e8f5e9',    # Light green
                 'orange': '#fff3e0',   # Light orange
@@ -229,9 +220,8 @@ class ScheduleClientApp:
                 'red': '#c62828'       # Dark red
             }
             
-            # Check if this slot is reserved by the current user
             if (start_time, end_time) in user_reserved_slots:
-                # Gray out reserved slots
+                
                 self.range_listbox.itemconfig(
                     tk.END,
                     {'bg': '#e0e0e0',  # Light gray background
@@ -247,7 +237,6 @@ class ScheduleClientApp:
                     'fg': fg_colors.get(color, '#000000')}
                 )
 
-        # Restore selections for non-reserved slots
         for index in selected_indices:
             if index < self.range_listbox.size():
                 start_time, end_time = self.schedule[index][0:2]
@@ -255,7 +244,6 @@ class ScheduleClientApp:
                     self.range_listbox.select_set(index)
 
     def reserve_ranges(self):
-        """Reserves selected time slots and disables them."""
         if not self.login:
             messagebox.showwarning("Warning", "Please set your login first!")
             return
@@ -265,7 +253,6 @@ class ScheduleClientApp:
             messagebox.showinfo("Info", "Please select time slots to reserve")
             return
 
-        # Check if any selected slots are already reserved
         selected_ranges = [self.schedule[i][0:2] for i in selected_indices]
         for start, end in selected_ranges:
             if self.login in self.login_ranges and str([(start, end)]) in self.login_ranges[self.login]:
@@ -279,7 +266,6 @@ class ScheduleClientApp:
             self.range_listbox.selection_clear(0, tk.END)
 
     def handle_click(self, event):
-        """Handle click events on the listbox"""
         index = self.range_listbox.nearest(event.y)
         if index >= 0:
             start_time, end_time = self.schedule[index][0:2]
@@ -290,9 +276,46 @@ class ScheduleClientApp:
                     if (start_time, end_time) in ranges:
                         return "break"  # Prevent selection
         return None
-
+    
+    
+    async def receive_notifications(self):
+        """Принимает уведомления через WebSocket."""
+        async with websockets.connect('ws://localhost:20005') as websocket:
+            # Send identification message first
+            await websocket.send(json.dumps({
+                "type": "client_connected",
+                "login": self.login
+            }))
+            
+            logger.info("Клиент подключился к WebSocket-серверу.")
+            try:
+                while True:
+                    message = await websocket.recv()
+                    notification = json.loads(message)
+                    
+                    if notification["type"] == "notification":
+                        if notification["status"] == "success" and notification.get("login") == self.login:
+                            # Use your existing show_notification method
+                            self.show_notification(
+                                f"Ваша запись на {notification['start']}:00 - {notification['end']}:00 подтверждена!"
+                            )
+                        elif notification["status"] == "rejected":
+                            # Show rejection message only if this client had requested this slot
+                            start_time, end_time = notification['start'], notification['end']
+                            if self.login in self.login_ranges:
+                                range_str = str([(start_time, end_time)])
+                                if range_str in self.login_ranges[self.login]:
+                                    self.show_notification(
+                                        f"Извините, но время {notification['start']}:00 - {notification['end']}:00 "
+                                        "уже занято. \nПожалуйста, выберите другой слот."
+                                    )
+        
+            except websockets.exceptions.ConnectionClosedError:
+                logger.warning("Соединение с WebSocket-сервером закрыто.")
+            except Exception as e:
+                logger.exception(f"Ошибка получения уведомлений: {e}")
+    
     async def handle_reservation(self, selected_ranges):
-        """Обрабатывает резервирование выбранных диапазонов."""
         ranges_message = f"CLIENT:{self.login}:{selected_ranges}"
         response = await self.send_request(ranges_message, self.primary_server_address)
 
@@ -300,16 +323,30 @@ class ScheduleClientApp:
             if self.login not in self.login_ranges:
                 self.login_ranges[self.login] = []
             self.login_ranges[self.login].append(str(selected_ranges))
-            
+
             # Update UI
             self.update_schedule_ui()
             messagebox.showinfo("Success", "Time slots successfully reserved!")
+            self.websocket_task = asyncio.create_task(self.receive_notifications()) # Запуск после успешного бронирования
+
         else:
             messagebox.showerror("Error", "Primary server is unavailable!")
+            
+    def show_notification(self, message):
+        notification_window = tk.Toplevel(self.root)
+        notification_window.title("Уведомление")
+        notification_window.geometry("450x150")
+        notification_label = ttk.Label(notification_window, text=message, font=('Arial', 12))
+        notification_label.pack(pady=20, padx=20)
+        notification_window.transient(self.root)
+        notification_window.grab_set()
+
+        notification_window.after(30000, notification_window.destroy)  # Закрытие через 3 секунды
 
     def on_closing(self):
-        """Метод для обработки закрытия окна."""
         self.running = False
+        if self.websocket_task:
+            self.websocket_task.cancel()
         self.root.quit()
 
 
