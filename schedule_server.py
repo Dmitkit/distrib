@@ -200,6 +200,18 @@ async def handle_client(reader, writer):
                 await writer.drain()
                 logger.info(f"Отправлены данные резервному серверу {client_addr}")
 
+            elif message == ("SHUT_DOWN"):
+                logger.info("Получен запрос на выключение сервера.")
+
+                # Закрытие всех соединений с клиентами
+                writer.close()
+                await writer.wait_closed()
+
+                # Остановим событийный цикл, чтобы выключить     сервер
+                loop = asyncio.get_event_loop()
+                loop.stop()
+                logger.info("Сервер выключен.")
+
     except Exception as e:
         logger.error(f"Ошибка при обработке клиента {client_addr}: {e}")
     finally:

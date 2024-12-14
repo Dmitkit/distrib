@@ -7,7 +7,7 @@ from logger_setup import get_logger
 logger = get_logger(__name__)
 
 # Список расписания
-schedule = [
+backup_schedule = [
     (9, 10, 0, 'green'),
     (10, 11, 0, 'green'),
     (11, 12, 0, 'green'),
@@ -27,44 +27,60 @@ connected_servers = [
     ('localhost', 20003),
 ]
 
-backup_schedule = []
+schedule_lock = asyncio.Lock()
 backup_login_ranges = {}
 
-schedule_lock = asyncio.Lock()
 main_server_host = 'localhost'
 main_server_port = 20000
+main_server_status = True
+main_server_status = True
 
+# Флаги состояния
+main_server_status = True  # Доступен ли основной сервер в данный момент
+main_server_was_down = False  # Был ли основной сервер недоступен ранее
 
 async def fetch_data_from_main_server():
-    """Периодически запрашивает данные с основного сервера."""
-    global backup_schedule, backup_login_ranges
+    """Проверяет доступность основного сервера и выполняет синхронизацию данных."""
+    global main_server_status, main_server_was_down, backup_schedule, backup_login_ranges
 
     while True:
         try:
-            logger.info("Запрос данных с основного сервера...")
+            # Подключение к основному серверу
             reader, writer = await asyncio.open_connection(main_server_host, main_server_port)
 
-            # Отправляем запрос данных
-            writer.write(b"GET_SERVER_DATA")
-            await writer.drain()
+            # Если основной сервер ранее был недоступен
+            if main_server_was_down:
+                writer.write(b"SHUT_DOWN")
+                await writer.drain()
+                main_server_was_down = False  # Сбрасываем флаг
 
-            # Читаем ответ
-            data = await reader.read(2048)
+            else:
+                # Запрашиваем актуальные данные с основного сервера
+                writer.write(b"GET_SERVER_DATA")
+                await writer.drain()
+                data = await reader.read(2048)
+
+                # Обновляем данные резервного сервера
+                server_data = json.loads(data.decode())
+                async with schedule_lock:
+                    backup_schedule = server_data["schedule"]
+                    backup_login_ranges = server_data["login_ranges"]
+
+                logger.info("Данные с основного сервера успешно обновлены.")
+
+            # Закрываем соединение
             writer.close()
             await writer.wait_closed()
+            main_server_status = True  # Основной сервер доступен
 
-            # Обновляем данные резервного сервера
-            server_data = json.loads(data.decode())
-            async with schedule_lock:
-                backup_schedule = server_data["schedule"]
-                backup_login_ranges = server_data["login_ranges"]
-
-            logger.info("Данные с основного сервера успешно обновлены.")
         except Exception as e:
-            logger.error(f"Ошибка при запросе данных с основного сервера: {e}")
-        
-        # Запрашиваем данные каждые 5 секунд
-        await asyncio.sleep(5)
+            # Если основной сервер недоступен
+            if main_server_status:  # Статус только что изменился
+                logger.warning("Основной сервер недоступен.")
+                main_server_was_down = True  # Фиксируем факт отключения
+            main_server_status = False  # Обновляем статус
+
+        await asyncio.sleep(5)  # Проверяем доступность каждые 5 секунд
 
 
 def vectors_ordered(v1, v2):
@@ -157,47 +173,48 @@ async def fetch_server_data(ip, port):
     
 
 async def aggregate_schedules():
-    global schedule, login_ranges
+    global backup_schedule, backup_login_ranges
     while True:
-        try:
-            # Параллельный сбор данных от всех серверов
-            server_data_list = await asyncio.gather(
-                *(fetch_server_data(ip, port) for ip, port in connected_servers),
-                return_exceptions=True
-            )
+        if not main_server_status:
+            try:
+                # Параллельный сбор данных от всех серверов
+                server_data_list = await asyncio.gather(
+                    *(fetch_server_data(ip, port) for ip, port in connected_servers),
+                    return_exceptions=True
+                )
 
-            # Обработка данных (исключая ошибки)
-            new_schedule = [(s, e, 0, 'green') for s, e, _, _ in schedule]
-            aggregated_login_ranges = {}
+                # Обработка данных (исключая ошибки)
+                new_schedule = [(s, e, 0, 'green') for s, e, _, _ in backup_schedule]
+                aggregated_login_ranges = {}
 
-            for server_data in server_data_list:
-                if isinstance(server_data, dict):  # Проверяем, что данные получены успешно
-                    for i, (s, e, count, color) in enumerate(server_data["schedule"]):
-                        _, _, current_count, _ = new_schedule[i]
-                        total_count = current_count + count
-                        new_color = (
-                            'red' if total_count > 10 else
-                            'orange' if total_count > 4 else
-                            'green'
-                        )
-                        new_schedule[i] = (s, e, total_count, new_color)
-
-                    # Объединение данных о логинах
-                    for login, ranges in server_data["login_ranges"].items():
-                        if login not in aggregated_login_ranges:
-                            aggregated_login_ranges[login] = ranges
-                        else:
-                            aggregated_login_ranges[login].extend(
-                                r for r in ranges if r not in aggregated_login_ranges[login]
+                for server_data in server_data_list:
+                    if isinstance(server_data, dict):  # Проверяем, что данные получены успешно
+                        for i, (s, e, count, color) in enumerate(server_data["schedule"]):
+                            _, _, current_count, _ = new_schedule[i]
+                            total_count = current_count + count
+                            new_color = (
+                                'red' if total_count > 10 else
+                                'orange' if total_count > 4 else
+                                'green'
                             )
+                            new_schedule[i] = (s, e, total_count, new_color)
 
-            # Обновляем расписание и логины
-            async with schedule_lock:
-                schedule[:] = new_schedule
-                login_ranges = aggregated_login_ranges
-                logger.info("Обновлено общее расписание.")
-        except Exception as e:
-            logger.error(f"Ошибка во время агрегации расписания: {e}")
+                        # Объединение данных о логинах
+                        for login, ranges in server_data["login_ranges"].items():
+                            if login not in aggregated_login_ranges:
+                                aggregated_login_ranges[login] = ranges
+                            else:
+                                aggregated_login_ranges[login].extend(
+                                    r for r in ranges if r not in aggregated_login_ranges[login]
+                                )
+
+                # Обновляем расписание и логины
+                async with schedule_lock:
+                    backup_schedule[:] = new_schedule
+                    backup_login_ranges = aggregated_login_ranges
+                    logger.info("Обновлено общее расписание.")
+            except Exception as e:
+                logger.error(f"Ошибка во время агрегации расписания: {e}")
 
         await asyncio.sleep(1)
 
@@ -219,7 +236,7 @@ async def handle_client(reader, writer):
 
             if message == "GET_SCHEDULE":
                 async with schedule_lock:
-                    writer.write(str(schedule).encode())
+                    writer.write(str(backup_schedule).encode())
                     await writer.drain()
                 logger.info(f"Отправлено расписание клиенту {client_addr}")
     except Exception as e:
@@ -231,15 +248,16 @@ async def handle_client(reader, writer):
 
 async def periodic_schedule_generation():
     """Функция, которая раз в час генерирует итоговое расписание."""
-    global schedule, login_ranges
+    global backup_schedule, backup_login_ranges
     while True:
-        try:
-            async with schedule_lock:
-                final_schedule = generate_final_schedule(schedule, login_ranges)
-            logger.info(f"Итоговое расписание сгенерировано: {final_schedule}")            
-            
-        except Exception as e:
-            logger.error(f"Ошибка при генерации итогового расписания: {e}")
+        if not main_server_status:
+            try:
+                async with schedule_lock:
+                    final_schedule = generate_final_schedule(backup_schedule, backup_login_ranges)
+                logger.info(f"Итоговое расписание сгенерировано: {final_schedule}")            
+                
+            except Exception as e:
+                logger.error(f"Ошибка при генерации итогового расписания: {e}")
 
         await asyncio.sleep(3600)
 
